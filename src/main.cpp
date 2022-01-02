@@ -8,6 +8,74 @@
 using namespace std;
 const double UniverseGravConst = 6.674e-11;
 
+class Knob {
+    double radius;
+    Color color;
+    Vector2 position;
+    bool sliderpressed;
+
+    public:
+    void DrawKnob() {
+        DrawCircleV(position, radius, color);
+    }
+    void DrawKnobPositionX(Font font, Vector2 baseposition) {
+        string knobpos = to_string(GetKnobValue(baseposition).x);
+        DrawTextEx(font, knobpos.c_str(), {GetPosition().x + 5 + MeasureTextEx(font, knobpos.c_str(), radius * 0.5, 1).x, GetPosition().y}, radius, 1, color);
+    }
+    void DrawKnobPositionY(Font font, Vector2 baseposition) {
+        string knobpos = to_string(GetKnobValue(baseposition).y);
+        DrawTextEx(font, knobpos.c_str(), {GetPosition().x , GetPosition().y + 5 + MeasureTextEx(font, knobpos.c_str(), radius * 0.5, 1).y}, radius, 1, color);
+    }
+    void SetPosition(float newposx, float newposy) {
+        position.x = newposx;
+        position.y = newposy;
+    }
+    void SetColor(Color newcolor) {
+        color = newcolor;
+    }
+    void SetRadius(double newradius) {
+        radius = newradius;
+    }
+    Vector2 GetPosition() {
+        return position;
+    }
+    Vector2 GetKnobValue(Vector2 baseposition) {
+        return Vector2Subtract(position, baseposition);
+    }
+    void UpdateKnobX(Camera2D camera) {
+        if(IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointCircle(GetScreenToWorld2D(GetMousePosition(), camera), position, radius)){
+            sliderpressed = true;
+        }else if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON) && sliderpressed) {
+            sliderpressed = false;
+        }
+
+        if(sliderpressed) {
+            position.x = GetScreenToWorld2D(GetMousePosition(), camera).x;
+        }
+    }
+    void UpdateKnobY(Camera2D camera) {
+        if(IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointCircle(GetScreenToWorld2D(GetMousePosition(), camera), position, radius)){
+            sliderpressed = true;
+        }else if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON) && sliderpressed) {
+            sliderpressed = false;
+        }
+
+        if(sliderpressed) {
+            position.y = GetScreenToWorld2D(GetMousePosition(), camera).y;
+        }
+    }
+    bool GetSliderPressed(){
+        return sliderpressed;
+    }
+    
+    Knob(Vector2 p, double r, Color c) {
+        radius = 5;
+        color = c;
+        position = p;
+        sliderpressed = false;
+
+    }
+};
 
 class Circle {
    double radius;
@@ -18,13 +86,22 @@ class Circle {
    deque<Vector2> points;
    Vector2 force;
    bool selected;
+   Knob knobx = {{0 ,0}, 0, BLANK};
+   Knob knoby= {{0 ,0}, 0, BLANK};;
 
    public:
    void DrawMyCircle() {
        DrawCircle(position.x, position.y, radius, color);
+       if(selected){
+           knobx.DrawKnob();
+           knoby.DrawKnob();
+       }
    }
    void SetVel(Vector2 nums){
        vel = nums;
+   }
+   void ClearPoints(){
+       points.clear();
    }
    Vector2 GetVel(){
        return vel;
@@ -38,8 +115,23 @@ class Circle {
    void SetSelect(bool tf){
        selected = tf;
    }
+   void SetRadius(double newRadius){
+       radius = newRadius;
+   }
+   void AddRadius(double newRadius){
+       radius += newRadius;
+   }
+   void SetColor(Color newColor){
+       color = newColor;
+   }
+   void SetPosition(Vector2 newpos){
+       position = newpos;
+   }
    bool GetSelect() {
        return selected;
+   }
+   bool GetKnobPressed() {
+       return knobx.GetSliderPressed() || knoby.GetSliderPressed();
    }
    void SetForce(Vector2 f) {
        force = f;
@@ -51,6 +143,16 @@ class Circle {
        if(points.size() == 2000){
            points.pop_front();
        }
+   }
+   void UpdatePlanetKnobs(Camera2D camera, Font font){
+       knobx.UpdateKnobX(camera);
+       knoby.UpdateKnobY(camera);
+       knobx.DrawKnobPositionX(font, position);
+       knoby.DrawKnobPositionY(font, position);
+   }
+   void UpDateKnobPos() {
+       knobx.SetPosition(position.x + vel.x, position.y);
+       knoby.SetPosition(position.x, position.y + vel.y);
    }
    void DrawVel(){
        DrawLine(position.x, position.y, position.x + vel.x, position.y, GREEN);
@@ -76,7 +178,12 @@ class Circle {
        Vector2 acceleration = Vector2Scale(force, 1.0/mass);
        vel.x += (acceleration.x * DT);
        vel.y += (acceleration.y * DT);
+       UpDateKnobPos();
    } 
+   void UpdateKnobVel(){
+       vel.x = knobx.GetKnobValue(position).x;
+       vel.y = knoby.GetKnobValue(position).y;
+   }
    void DrawPoints() {
        for(int i = 0; i < points.size(); i++) {
            DrawPixelV(points[i], color);
@@ -85,15 +192,18 @@ class Circle {
    void SnapCameraTo(Camera2D *c) {
        c->target = position; 
    }
-   Circle(Vector2 p, double r, double m, Vector2 v, Color c){
+   Circle(Vector2 p, double r, double m, Color c){
        position = p;
-       vel = v;
        radius = r;
        color = c;
        mass = m;
        points = {};
        force = {0, 0};
        selected = false;
+       knobx = {{position.x, position.y}, radius, GRAY};
+       knoby = {{position.x, position.y}, radius, DARKGRAY};
+       vel.x = knobx.GetKnobValue(position).x;
+       vel.y = knoby.GetKnobValue(position).y;
        
    }
 };
@@ -133,6 +243,13 @@ class Button {
             uiSelect = false;
         }
         return uiSelect;
+    }
+    bool IsButtonPressed () {
+        if(IsMouseButtonPressed(MOUSE_LEFT_BUTTON) && CheckCollisionPointRec(GetMousePosition(), ButtonToRect())){
+            return true;
+        } else {
+            return false;
+        }
     }
     bool GetButtonState(){
         return buttonState;
@@ -197,10 +314,10 @@ class Slider {
         DrawCircleV(circlePosition, circleRadius, circleColor); 
     }
     bool UpdateCircle(Vector2 newPosition) {
-        if(CheckCollisionPointCircle(GetMousePosition(), circlePosition, circleRadius) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)){
+        if(CheckCollisionPointCircle(GetMousePosition(), circlePosition, circleRadius) && IsMouseButtonPressed(MOUSE_LEFT_BUTTON)){
             sliderPressed = true;
             uiSelect = true;
-        }else if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) && sliderPressed) {
+        }else if (!IsMouseButtonDown(MOUSE_LEFT_BUTTON) && sliderPressed) {
             sliderPressed = false;
             uiSelect = false;
         }
@@ -240,16 +357,19 @@ int main(void)
     const int screenHeight = 900;
     bool isPlanetSelected = false;
     bool isUiSelected = false;
-    vector<Circle> Planets = { {{(screenWidth/2), (screenHeight/2)}, 20, 1.11e16, {0, 0}, SKYBLUE},
-                               {{(screenWidth/2 - 240), screenHeight/2}, 10, 1e14, {0, 60}, RED},
-                               {{(screenWidth/2 - 260), screenHeight/2}, 3, 1e5, {0, 75}, PURPLE},
-                               {{(screenWidth/2 - 350), screenHeight/2}, 5, 1e2, {0, 50}, YELLOW}}; 
+    bool isKnobSelected = false;
+    bool canScrolltoZoom = true;
+    vector<Circle> Planets = { {{(screenWidth/3), (screenHeight/2)}, 20, 1e18, SKYBLUE},
+                               {{(screenWidth/3 * 2), screenHeight/2}, 20, 1e18, RED}}; 
+    Circle NewPlanet = {{0, 0}, 15, 1, WHITE};
 
     InitWindow(screenWidth, screenHeight, "Grabity");
+
     
     Font defaultFont = GetFontDefault();
-    Button PausePlay({screenWidth - 85, 5}, {50, 50}, ">", 40, DARKGRAY, defaultFont, "| |");
-    Button AddPlanet({screenWidth - 85,  60}, {50, 50}, "+", 40, DARKGRAY, defaultFont, "-");
+    Button PausePlay({screenWidth - 55, 5}, {50, 50}, ">", 40, DARKGRAY, defaultFont, "| |");
+    Button AddPlanet({screenWidth - 55,  60}, {50, 50}, "+", 40, DARKGRAY, defaultFont, "-");
+    Button Reset({5, 20}, {50, 50 }, "R", 40, DARKGRAY, defaultFont, "R");
     Slider S1({screenWidth/4, 5}, {200, 35}, LIGHTGRAY, DARKGRAY, RED);
     
     Camera2D camera = { 0 };
@@ -258,22 +378,32 @@ int main(void)
     camera.rotation = 0.0f;
     camera.zoom = 0.5f;
 
+    vector<Vector2> PlanetStartPosition = {};
+    vector<Vector2> PlanetStartVel = {};
+
+    for(int i = 0; i < Planets.size(); i++){
+        PlanetStartPosition.push_back(Planets[i].GetPosition());
+        PlanetStartVel.push_back(Planets[i].GetVel());
+    }
+
     SetTargetFPS(60);
     while (!WindowShouldClose())
     {
+
+        string MousePos = "mouse x: " + to_string(GetMouseX()) + " mouse y: " + to_string(GetMouseY());
         DrawFPS(0, 0); 
+        DrawTextEx(defaultFont, MousePos.c_str(), {100, 0}, 20, 1, DARKGREEN);
         float deltaTime = GetFrameTime(); 
         isUiSelected = false; 
+        isPlanetSelected = false;
+        isKnobSelected = false;
         
         BeginDrawing();
         ClearBackground(BLACK);
-        
-        PausePlay.DrawButton();
-        AddPlanet.DrawButton();
-        S1.DrawSlider();
-        
+
         isUiSelected |= PausePlay.UpdateButton();
         isUiSelected |= AddPlanet.UpdateButton();
+        isUiSelected |= Reset.UpdateButton();
         isUiSelected |= S1.UpdateCircle(GetMousePosition());
         
         if(PausePlay.GetButtonState()){
@@ -286,40 +416,96 @@ int main(void)
                 }
             }
         }
-       camera.zoom += GetMouseWheelMove()/20;
-       if(camera.zoom <= 0.01) camera.zoom = 0.01;
+
+
+        if(Reset.IsButtonPressed()){
+             for(int i = 0; i < PlanetStartPosition.size(); i++){
+                Planets[i].SetPosition(PlanetStartPosition[i]);
+                Planets[i].SetVel(PlanetStartVel[i]);
+                Planets[i].UpDateKnobPos(); 
+                Planets[i].ClearPoints();
+                camera.target = Planets[0].GetPosition();
+            }
+        }
         
         BeginMode2D(camera);
+
+            if(AddPlanet.GetButtonState() && !PausePlay.GetButtonState()){
+                canScrolltoZoom = false;
+                NewPlanet.SetPosition(GetScreenToWorld2D(GetMousePosition(), camera));
+                NewPlanet.AddRadius(GetMouseWheelMove());
+                NewPlanet.DrawMyCircle();
+                if(IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)){
+                    Planets.push_back(NewPlanet);
+                    PlanetStartVel.push_back(NewPlanet.GetVel());
+                    PlanetStartPosition.push_back(NewPlanet.GetPosition());
+                    AddPlanet.SetButtonState(false);
+                    NewPlanet = {{0, 0}, 15, 1 , WHITE};
+                }
+
+            } else {
+                canScrolltoZoom = true;
+            }
+
+            if (canScrolltoZoom){ 
+                camera.zoom += GetMouseWheelMove()/20;
+                if(camera.zoom <= 0.01) camera.zoom = 0.01;
+            }
+
         for(int i = 0; i < Planets.size(); i++){
             
             Planets[i].DrawPoints();
+
             if(PausePlay.GetButtonState()){
                 Planets[i].UpdateVel(deltaTime);
                 Planets[i].UpdatePosition(deltaTime);
             }
-            Planets[i].DrawMyCircle();
-            
-            if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointCircle(GetScreenToWorld2D(GetMousePosition(), camera), Planets[i].GetPosition(), Planets[i].GetRadius())){
-                for(int j = 0; j < Planets.size(); j++){
-                    if(i != j) {
-                        Planets[j].SetSelect(false);
-                    }
-                }
-                Planets[i].SetSelect(true);
-            }else if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)){
-                Planets[i].SetSelect(false);
-            } 
+
             if(Planets[i].GetSelect()) {
                 camera.target = Planets[i].GetPosition();
+                if(IsKeyPressed(KEY_ONE)) Planets[i].SetColor(RED);
+                else if(IsKeyPressed(KEY_TWO)) Planets[i].SetColor(ORANGE);
+                else if(IsKeyPressed(KEY_THREE)) Planets[i].SetColor(YELLOW);
+                else if(IsKeyPressed(KEY_FOUR)) Planets[i].SetColor(GREEN);
+                else if(IsKeyPressed(KEY_FIVE)) Planets[i].SetColor(DARKGREEN);
+                else if(IsKeyPressed(KEY_SIX)) Planets[i].SetColor(SKYBLUE);
+                else if(IsKeyPressed(KEY_SEVEN)) Planets[i].SetColor(PURPLE);
+                else if(IsKeyPressed(KEY_EIGHT)) Planets[i].SetColor(MAGENTA);
+                else if(IsKeyPressed(KEY_NINE)) Planets[i].SetColor(WHITE);
+                else if(IsKeyPressed(KEY_ZERO)) Planets[i].SetColor(BEIGE);
+                
                 Planets[i].DrawVel();
                 Planets[i].DrawAccel();
                 Planets[i].DrawSelected();
+
+                if(!PausePlay.GetButtonState()){
+                    Planets[i].UpdatePlanetKnobs(camera, defaultFont);
+                    Planets[i].UpdatePlanetKnobs(camera, defaultFont);
+                    Planets[i].UpdateKnobVel();
+                }
           
             }
+            Planets[i].DrawMyCircle();
         }
         for(int i = 0; i < Planets.size(); i++){
-                if(Planets[i].GetSelect()) isPlanetSelected = true;
-                else isPlanetSelected = false;
+            isKnobSelected |= Planets[i].GetKnobPressed();
+        }
+        for(int i = 0; i < Planets.size(); i++){
+            isPlanetSelected |= Planets[i].GetSelect();
+        }
+        for(int i = 0; i < Planets.size(); i++){
+            if(!isKnobSelected){
+                if(IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && CheckCollisionPointCircle(GetScreenToWorld2D(GetMousePosition(), camera), Planets[i].GetPosition(), Planets[i].GetRadius())){
+                    for(int j = 0; j < Planets.size(); j++){
+                        if(i != j) {
+                            Planets[j].SetSelect(false);
+                        }
+                    }
+                    Planets[i].SetSelect(true);
+                }else if(IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)){
+                    Planets[i].SetSelect(false);
+                }
+            }
         }
         if(IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !isPlanetSelected && !isUiSelected){
             
@@ -327,6 +513,12 @@ int main(void)
         }
     
         EndMode2D();
+
+        PausePlay.DrawButton();
+        AddPlanet.DrawButton();
+        Reset.DrawButton();             
+        S1.DrawSlider();
+        
         EndDrawing();
     }
     CloseWindow();
